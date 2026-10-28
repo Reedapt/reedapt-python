@@ -1,0 +1,62 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "reedapt"
+dynamic = ["version"]
+description = "The official Python library for the Reedapt API."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.9"
+authors = [{ name = "Reedapt", email = "support@reedapt.com" }]
+keywords = ["reedapt", "dubbing", "translation", "voice", "api"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Typing :: Typed",
+]
+dependencies = [
+  "httpx>=0.23,<1",
+  "typing_extensions>=4.7",
+]
+
+[project.urls]
+Homepage = "https://docs.reedapt.com"
+Documentation = "https://docs.reedapt.com"
+Source = "https://github.com/Reedapt/reedapt-python"
+Issues = "https://github.com/Reedapt/reedapt-python/issues"
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-asyncio>=0.23", "mypy>=1.10", "ruff>=0.6"]
+
+[tool.hatch.version]
+path = "src/reedapt/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/reedapt"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "tests", "README.md", "LICENSE", "CHANGELOG.md"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.mypy]
+strict = true
+python_version = "3.9"
+files = ["src"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py39"
