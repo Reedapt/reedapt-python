@@ -90,6 +90,7 @@ reedapt.dubs.cancel("job_3f9a2c7e1b4d")  # minutes are returned
 
 reedapt.languages.list()  # {"target_languages": [...]}
 reedapt.usage.retrieve()  # plan, key mode and minutes left
+reedapt.usage.report(month="2026-10")  # minutes and dubs per key and per language
 ```
 
 Results are plain dictionaries, typed with `TypedDict`s in `reedapt.types`.

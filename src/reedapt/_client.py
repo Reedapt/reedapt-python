@@ -22,6 +22,7 @@ from .types import (
     Upload,
     UploadedPart,
     Usage,
+    UsageReport,
     WebhookDeliveryList,
     WebhookEndpoint,
     WebhookEndpointList,
@@ -437,3 +438,7 @@ class UsageResource:
     def retrieve(self, **options: Unpack[RequestOptions]) -> Usage:
         """The plan, the kind of key and the minutes left."""
         return self._client._request("GET", "/usage", options=options)
+
+    def report(self, *, month: Optional[str] = None, **options: Unpack[RequestOptions]) -> UsageReport:
+        """A month (``YYYY-MM``, UTC; default this month) of minutes and dubs, per key and per language."""
+        return self._client._request("GET", "/usage/report", params={"month": month}, options=options)

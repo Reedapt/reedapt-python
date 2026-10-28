@@ -214,3 +214,12 @@ async def test_async_list_all_and_errors() -> None:
     assert [d["id"] async for d in reedapt.dubs.list_all()] == ["job_1"]
     with pytest.raises(AuthenticationError):
         await reedapt.usage.retrieve()
+
+
+def test_usage_report_asks_for_the_month_given() -> None:
+    rec = Recorder(lambda r: answer(200, {"month": "2026-09", "minutes": 1, "keys": [], "languages": []}))
+    reedapt = client(rec)
+    assert reedapt.usage.report(month="2026-09")["month"] == "2026-09"
+    assert str(rec.calls[0].url) == "https://api.reedapt.com/v1/usage/report?month=2026-09"
+    reedapt.usage.report()
+    assert str(rec.calls[1].url) == "https://api.reedapt.com/v1/usage/report"

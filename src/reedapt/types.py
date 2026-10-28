@@ -100,6 +100,42 @@ class Usage(TypedDict):
     test_preview_seconds: int
 
 
+class DubCounts(TypedDict):
+    completed: int
+    in_progress: int
+    failed: int
+    """Failed or cancelled. Their minutes were returned."""
+
+
+class KeyUsage(TypedDict):
+    key_id: Optional[str]
+    mode: Literal["live", "test"]
+    minutes: float
+    minutes_in_progress: float
+    dubs: DubCounts
+
+
+class LanguageUsage(TypedDict):
+    target_language: Optional[str]
+    minutes: float
+    minutes_in_progress: float
+    dubs: DubCounts
+
+
+class UsageReport(TypedDict):
+    """One month of the account's API usage. A dub counts in the month it started (UTC).
+    ``minutes`` are completed live dubs; test dubs are free."""
+
+    month: str
+    period_start: str
+    period_end: str
+    minutes: float
+    minutes_in_progress: float
+    dubs: DubCounts
+    keys: List[KeyUsage]
+    languages: List[LanguageUsage]
+
+
 class WebhookEndpoint(TypedDict):
     id: str
     object: NotRequired[str]
