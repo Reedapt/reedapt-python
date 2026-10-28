@@ -43,7 +43,9 @@ def verify_webhook(payload: Payload, header: Optional[str], secret: str, *, tole
         )
 
 
-def construct_webhook_event(payload: Payload, header: Optional[str], secret: str, *, tolerance: int = 300) -> WebhookEvent:
+def construct_webhook_event(
+    payload: Payload, header: Optional[str], secret: str, *, tolerance: int = 300
+) -> WebhookEvent:
     """Verifies a delivery and returns its parsed event."""
     verify_webhook(payload, header, secret, tolerance=tolerance)
     return json.loads(payload)
@@ -53,5 +55,7 @@ class Webhooks:
     def verify(self, payload: Payload, header: Optional[str], secret: str, *, tolerance: int = 300) -> None:
         verify_webhook(payload, header, secret, tolerance=tolerance)
 
-    def construct_event(self, payload: Payload, header: Optional[str], secret: str, *, tolerance: int = 300) -> WebhookEvent:
+    def construct_event(
+        self, payload: Payload, header: Optional[str], secret: str, *, tolerance: int = 300
+    ) -> WebhookEvent:
         return construct_webhook_event(payload, header, secret, tolerance=tolerance)

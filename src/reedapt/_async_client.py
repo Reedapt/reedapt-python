@@ -4,7 +4,7 @@ import asyncio
 from typing import Any, AsyncIterator, Callable, Dict, List, Mapping, Optional, Sequence
 
 import httpx
-from typing_extensions import Unpack
+from typing_extensions import Self, Unpack
 
 from . import _base
 from ._base import FileInput, RequestOptions, Retry, Source
@@ -61,10 +61,10 @@ class AsyncReedapt:
         if self._owns_http:
             await self._http.aclose()
 
-    async def __aenter__(self) -> "AsyncReedapt":
+    async def __aenter__(self) -> Self:
         return self
 
-    async def __aexit__(self, *_: Any) -> None:
+    async def __aexit__(self, *_: object) -> None:
         await self.close()
 
     async def dub(
@@ -97,6 +97,9 @@ class AsyncReedapt:
                 on_progress=on_progress,
                 idempotency_key=_base.suffixed(idempotency_key, "upload"),
             )
+        dub_options: RequestOptions = {}
+        if idempotency_key:
+            dub_options["idempotency_key"] = f"{idempotency_key}:dubs"
         return await self.dubs.create(
             upload_id=upload["id"],
             source_language=source_language,
@@ -105,7 +108,7 @@ class AsyncReedapt:
             num_speakers=num_speakers,
             media_category=media_category,
             metadata=metadata,
-            idempotency_key=_base.suffixed(idempotency_key, "dubs"),
+            **dub_options,
         )
 
     async def _request(
@@ -164,7 +167,9 @@ class AsyncUploads:
         body = {k: v for k, v in (("filename", filename), ("size", size), ("source_url", source_url)) if v is not None}
         return await self._client._request("POST", "/uploads", body=body, idempotent=True, options=options)
 
-    async def sign_parts(self, upload_id: str, part_numbers: Sequence[int], **options: Unpack[RequestOptions]) -> Dict[str, Any]:
+    async def sign_parts(
+        self, upload_id: str, part_numbers: Sequence[int], **options: Unpack[RequestOptions]
+    ) -> Dict[str, Any]:
         """Signs links for up to 100 more parts."""
         return await self._client._request(
             "POST",
@@ -173,7 +178,9 @@ class AsyncUploads:
             options=options,
         )
 
-    async def complete(self, upload_id: str, parts: Sequence[UploadedPart], **options: Unpack[RequestOptions]) -> Upload:
+    async def complete(
+        self, upload_id: str, parts: Sequence[UploadedPart], **options: Unpack[RequestOptions]
+    ) -> Upload:
         return await self._client._request(
             "POST", f"/uploads/{_base.quote(upload_id)}/complete", body={"parts": list(parts)}, options=options
         )
@@ -288,7 +295,9 @@ class AsyncUploads:
             return upload
         return await self.wait_until_ready(upload["id"], poll_interval=poll_interval, timeout=timeout)
 
-    async def wait_until_ready(self, upload_id: str, *, poll_interval: float = 10, timeout: float = 3 * 60 * 60) -> Upload:
+    async def wait_until_ready(
+        self, upload_id: str, *, poll_interval: float = 10, timeout: float = 3 * 60 * 60
+    ) -> Upload:
         """Polls an upload until it can be dubbed. Raises ``WaitError`` if it failed."""
         loop = asyncio.get_running_loop()
         deadline = loop.time() + timeout

@@ -193,7 +193,9 @@ def test_wait_until_done_polls_until_the_dub_is_final() -> None:
 async def test_the_async_client_makes_the_same_requests() -> None:
     answers = [api_error(503, "UNAVAILABLE"), answer(201, {"dubs": [DUB]})]
     rec = Recorder(lambda r: answers.pop(0))
-    async with AsyncReedapt(api_key="rk_test_abc", http_client=httpx.AsyncClient(transport=httpx.MockTransport(rec))) as reedapt:
+    async with AsyncReedapt(
+        api_key="rk_test_abc", http_client=httpx.AsyncClient(transport=httpx.MockTransport(rec))
+    ) as reedapt:
         created = await reedapt.dubs.create(upload_id="u", source_language="en", target_languages=["fr"])
     assert created["dubs"][0]["id"] == "job_1"
     assert len(rec.calls) == 2
@@ -201,7 +203,13 @@ async def test_the_async_client_makes_the_same_requests() -> None:
 
 
 async def test_async_list_all_and_errors() -> None:
-    rec = Recorder(lambda r: answer(200, {"data": [DUB], "has_more": False}) if r.url.path.endswith("/dubs") else api_error(401, "UNAUTHORIZED"))
+    rec = Recorder(
+        lambda r: (
+            answer(200, {"data": [DUB], "has_more": False})
+            if r.url.path.endswith("/dubs")
+            else api_error(401, "UNAUTHORIZED")
+        )
+    )
     reedapt = AsyncReedapt(api_key="k", http_client=httpx.AsyncClient(transport=httpx.MockTransport(rec)))
     assert [d["id"] async for d in reedapt.dubs.list_all()] == ["job_1"]
     with pytest.raises(AuthenticationError):

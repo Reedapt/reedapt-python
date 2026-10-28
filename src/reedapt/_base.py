@@ -48,9 +48,7 @@ class Settings:
     ) -> None:
         api_key = api_key or os.environ.get("REEDAPT_API_KEY")
         if not api_key:
-            raise ReedaptError(
-                "No API key. Pass api_key= or set the REEDAPT_API_KEY environment variable."
-            )
+            raise ReedaptError("No API key. Pass api_key= or set the REEDAPT_API_KEY environment variable.")
         self.api_key = api_key
         self.base_url = (base_url or os.environ.get("REEDAPT_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
         self.timeout = timeout
@@ -128,18 +126,18 @@ def retry_delay(error: ReedaptError, attempt: int) -> float:
     return backoff(attempt)
 
 
-def part_range(n: int, part_size: int, size: int) -> "tuple[int, int]":
+def part_range(n: int, part_size: int, size: int) -> tuple[int, int]:
     start = (n - 1) * part_size
     return start, min(start + part_size, size)
 
 
-def sign_batch(n: int, part_count: int, have: Mapping[int, str]) -> "list[int]":
+def sign_batch(n: int, part_count: int, have: Mapping[int, str]) -> list[int]:
     first = ((n - 1) // SIGN_BATCH) * SIGN_BATCH + 1
     last = min(first + SIGN_BATCH - 1, part_count)
     return [p for p in range(first, last + 1) if p not in have]
 
 
-def part_outcome(n: int, response: httpx.Response) -> "tuple[Optional[str], bool, str]":
+def part_outcome(n: int, response: httpx.Response) -> tuple[Optional[str], bool, str]:
     """For a part's PUT: its ETag if it worked, whether to sign the link again,
     and what went wrong. A 4xx other than an expired link is final."""
     if response.is_success:
@@ -171,7 +169,7 @@ class Source:
             self.filename = filename
         elif isinstance(file, (str, os.PathLike)):
             path = os.fspath(file)
-            self._owned = self._file = open(path, "rb")
+            self._owned = self._file = open(path, "rb")  # noqa: SIM115 - read by part from threads; closed by close()
             self.size = os.fstat(self._owned.fileno()).st_size
             self.filename = filename or os.path.basename(path)
         elif hasattr(file, "read") and hasattr(file, "seek"):
@@ -208,7 +206,7 @@ class Source:
 def dub_body(
     upload_id: str,
     source_language: str,
-    target_languages: "list[str]",
+    target_languages: list[str],
     voice_cloning: Optional[bool],
     num_speakers: Optional[int],
     media_category: Optional[str],

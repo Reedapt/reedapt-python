@@ -7,7 +7,7 @@ from concurrent.futures import wait as wait_for_futures
 from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Sequence
 
 import httpx
-from typing_extensions import Unpack
+from typing_extensions import Self, Unpack
 
 from . import _base
 from ._base import FileInput, RequestOptions, Retry, Source
@@ -66,10 +66,10 @@ class Reedapt:
         if self._owns_http:
             self._http.close()
 
-    def __enter__(self) -> "Reedapt":
+    def __enter__(self) -> Self:
         return self
 
-    def __exit__(self, *_: Any) -> None:
+    def __exit__(self, *_: object) -> None:
         self.close()
 
     def dub(
@@ -102,6 +102,9 @@ class Reedapt:
                 on_progress=on_progress,
                 idempotency_key=_base.suffixed(idempotency_key, "upload"),
             )
+        dub_options: RequestOptions = {}
+        if idempotency_key:
+            dub_options["idempotency_key"] = f"{idempotency_key}:dubs"
         return self.dubs.create(
             upload_id=upload["id"],
             source_language=source_language,
@@ -110,7 +113,7 @@ class Reedapt:
             num_speakers=num_speakers,
             media_category=media_category,
             metadata=metadata,
-            idempotency_key=_base.suffixed(idempotency_key, "dubs"),
+            **dub_options,
         )
 
     def _request(
@@ -169,7 +172,9 @@ class Uploads:
         body = {k: v for k, v in (("filename", filename), ("size", size), ("source_url", source_url)) if v is not None}
         return self._client._request("POST", "/uploads", body=body, idempotent=True, options=options)
 
-    def sign_parts(self, upload_id: str, part_numbers: Sequence[int], **options: Unpack[RequestOptions]) -> Dict[str, Any]:
+    def sign_parts(
+        self, upload_id: str, part_numbers: Sequence[int], **options: Unpack[RequestOptions]
+    ) -> Dict[str, Any]:
         """Signs links for up to 100 more parts."""
         return self._client._request(
             "POST",
@@ -332,7 +337,9 @@ class Dubs:
     def retrieve(self, dub_id: str, **options: Unpack[RequestOptions]) -> Dub:
         return self._client._request("GET", f"/dubs/{_base.quote(dub_id)}", options=options)
 
-    def list(self, *, limit: Optional[int] = None, offset: Optional[int] = None, **options: Unpack[RequestOptions]) -> DubList:
+    def list(
+        self, *, limit: Optional[int] = None, offset: Optional[int] = None, **options: Unpack[RequestOptions]
+    ) -> DubList:
         """One page of the account's dubs, newest first."""
         return self._client._request("GET", "/dubs", params={"limit": limit, "offset": offset}, options=options)
 
@@ -385,7 +392,9 @@ class WebhookEndpoints:
     def __init__(self, client: Reedapt) -> None:
         self._client = client
 
-    def create(self, *, url: str, description: Optional[str] = None, **options: Unpack[RequestOptions]) -> WebhookEndpoint:
+    def create(
+        self, *, url: str, description: Optional[str] = None, **options: Unpack[RequestOptions]
+    ) -> WebhookEndpoint:
         """Adds an endpoint. The answer's ``secret`` is shown only this once."""
         body = {"url": url, **({"description": description} if description is not None else {})}
         # Not retried after a network failure: it could add the endpoint twice.
@@ -403,7 +412,9 @@ class WebhookEndpoints:
             "POST", f"/webhook_endpoints/{_base.quote(endpoint_id)}/test", retry="unsafe", options=options
         )
 
-    def deliveries(self, endpoint_id: str, *, limit: Optional[int] = None, **options: Unpack[RequestOptions]) -> WebhookDeliveryList:
+    def deliveries(
+        self, endpoint_id: str, *, limit: Optional[int] = None, **options: Unpack[RequestOptions]
+    ) -> WebhookDeliveryList:
         """Recent deliveries to the endpoint, with what it answered."""
         return self._client._request(
             "GET", f"/webhook_endpoints/{_base.quote(endpoint_id)}/deliveries", params={"limit": limit}, options=options

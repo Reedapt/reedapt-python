@@ -79,11 +79,11 @@ class ServerError(APIError):
     """5xx: something went wrong on Reedapt's side."""
 
 
-class ConnectionError(ReedaptError):  # noqa: A001 - mirrors the API's vocabulary
+class ConnectionError(ReedaptError):
     """The request never got an answer."""
 
 
-class TimeoutError(ConnectionError):  # noqa: A001
+class TimeoutError(ConnectionError):
     """The request took longer than its timeout."""
 
 

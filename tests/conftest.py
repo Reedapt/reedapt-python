@@ -36,14 +36,24 @@ class Recorder:
 
 
 def answer(status: int, body: Any = None, headers: Optional[Dict[str, str]] = None) -> httpx.Response:
-    return httpx.Response(status, json=body, headers=headers) if body is not None else httpx.Response(status, headers=headers)
+    return (
+        httpx.Response(status, json=body, headers=headers)
+        if body is not None
+        else httpx.Response(status, headers=headers)
+    )
 
 
 def api_error(status: int, code: str, headers: Optional[Dict[str, str]] = None) -> httpx.Response:
     return answer(status, {"error": {"code": code, "message": f"{code} happened", "request_id": "req_test"}}, headers)
 
 
-def upload_server(size: int, part_size: int, *, first_links: int = 100, storage: Optional[Callable[[httpx.Request], Optional[httpx.Response]]] = None) -> Recorder:
+def upload_server(
+    size: int,
+    part_size: int,
+    *,
+    first_links: int = 100,
+    storage: Optional[Callable[[httpx.Request], Optional[httpx.Response]]] = None,
+) -> Recorder:
     """A fake API plus storage for one upload of `size` bytes in parts of `part_size`."""
     part_count = -(-size // part_size)
     upload = {"id": "job_up", "filename": "talk.mp4", "size": size, "part_size": part_size, "part_count": part_count}
@@ -60,7 +70,14 @@ def upload_server(size: int, part_size: int, *, first_links: int = 100, storage:
             return httpx.Response(200, headers={"etag": f'"etag-{url.rsplit("/", 1)[1]}"'})
         path = url.replace(API, "")
         if path == "/uploads":
-            return answer(201, {**upload, "status": "uploading", "parts": [link(n) for n in range(1, min(first_links, part_count) + 1)]})
+            return answer(
+                201,
+                {
+                    **upload,
+                    "status": "uploading",
+                    "parts": [link(n) for n in range(1, min(first_links, part_count) + 1)],
+                },
+            )
         if path == "/uploads/job_up/parts":
             return answer(200, {"parts": [link(n) for n in json.loads(request.content)["part_numbers"]]})
         if path in ("/uploads/job_up/complete", "/uploads/job_up"):
