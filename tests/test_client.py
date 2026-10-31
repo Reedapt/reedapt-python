@@ -6,6 +6,7 @@ import pytest
 from reedapt import (
     AsyncReedapt,
     AuthenticationError,
+    ConflictError,
     ConnectionError,
     InvalidRequestError,
     RateLimitError,
@@ -223,3 +224,65 @@ def test_usage_report_asks_for_the_month_given() -> None:
     assert str(rec.calls[0].url) == "https://api.reedapt.com/v1/usage/report?month=2026-09"
     reedapt.usage.report()
     assert str(rec.calls[1].url) == "https://api.reedapt.com/v1/usage/report"
+
+
+def test_transcript_returns_the_lines() -> None:
+    line = {"start_ms": 1200, "end_ms": 3850, "speaker": "SPEAKER_00", "original_text": "Hi.", "text": "Salut."}
+    rec = Recorder(lambda r: answer(200, {"dub_id": "job_1", "lines": [line]}))
+    assert client(rec).dubs.transcript("job_1")["lines"] == [line]
+    assert str(rec.calls[0].url) == "https://api.reedapt.com/v1/dubs/job_1/transcript"
+
+
+def test_subtitles_return_the_file_text() -> None:
+    vtt = "WEBVTT\n\n00:00:01.200 --> 00:00:03.850\nSalut.\n"
+    rec = Recorder(lambda r: httpx.Response(200, text=vtt, headers={"content-type": "text/vtt; charset=utf-8"}))
+    reedapt = client(rec)
+    assert reedapt.dubs.subtitles("job_1", format="vtt", language="source") == vtt
+    assert str(rec.calls[0].url) == "https://api.reedapt.com/v1/dubs/job_1/subtitles?format=vtt&language=source"
+    reedapt.dubs.subtitles("job_1")
+    assert str(rec.calls[1].url) == "https://api.reedapt.com/v1/dubs/job_1/subtitles?format=srt&language=target"
+
+
+def test_subtitles_of_an_unfinished_dub_raise_a_conflict() -> None:
+    rec = Recorder(lambda r: api_error(409, "DUB_NOT_READY"))
+    with pytest.raises(ConflictError) as info:
+        client(rec).dubs.subtitles("job_1")
+    assert info.value.code == "DUB_NOT_READY"
+
+
+def test_resending_a_delivery_is_not_retried_after_a_network_failure() -> None:
+    delivery = {
+        "id": "whd_1",
+        "event_id": "evt_1",
+        "event_type": "dub.completed",
+        "status": "pending",
+        "attempts": 0,
+        "created_at": "x",
+    }
+    rec = Recorder(lambda r: answer(201, delivery))
+    assert client(rec).webhook_endpoints.resend_delivery("we_1", "whd_1") == delivery
+    assert rec.calls[0].method == "POST"
+    assert str(rec.calls[0].url) == "https://api.reedapt.com/v1/webhook_endpoints/we_1/deliveries/whd_1/resend"
+
+    def refuse(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("refused", request=request)
+
+    down = Recorder(refuse)
+    with pytest.raises(ConnectionError):
+        client(down).webhook_endpoints.resend_delivery("we_1", "whd_1")
+    assert len(down.calls) == 1
+
+
+async def test_async_transcript_subtitles_and_resend() -> None:
+    def handle(r: httpx.Request) -> httpx.Response:
+        if r.url.path.endswith("/subtitles"):
+            return httpx.Response(200, text="1\n00:00:01,200 --> 00:00:03,850\nSalut.\n")
+        if r.url.path.endswith("/resend"):
+            return answer(201, {"id": "whd_1"})
+        return answer(200, {"dub_id": "job_1", "lines": []})
+
+    rec = Recorder(handle)
+    reedapt = AsyncReedapt(api_key="k", http_client=httpx.AsyncClient(transport=httpx.MockTransport(rec)))
+    assert (await reedapt.dubs.transcript("job_1"))["lines"] == []
+    assert (await reedapt.dubs.subtitles("job_1")).startswith("1\n")
+    assert (await reedapt.webhook_endpoints.resend_delivery("we_1", "whd_1"))["id"] == "whd_1"

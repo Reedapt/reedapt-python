@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, AsyncIterator, Callable, Dict, List, Mapping, Optional, Sequence
+from typing import Any, AsyncIterator, Callable, Dict, List, Literal, Mapping, Optional, Sequence
 
 import httpx
 from typing_extensions import Self, Unpack
@@ -17,10 +17,12 @@ from .types import (
     DubList,
     DubsCreated,
     Languages,
+    Transcript,
     Upload,
     UploadedPart,
     Usage,
     UsageReport,
+    WebhookDelivery,
     WebhookDeliveryList,
     WebhookEndpoint,
     WebhookEndpointList,
@@ -121,6 +123,7 @@ class AsyncReedapt:
         params: Optional[Dict[str, Any]] = None,
         retry: Retry = "safe",
         idempotent: bool = False,
+        text: bool = False,
         options: Optional[RequestOptions] = None,
     ) -> Any:
         options = options or {}
@@ -144,7 +147,7 @@ class AsyncReedapt:
                     )
                 except httpx.TransportError as e:
                     raise _base.connection_error(method, path, e, timeout) from e
-                return _base.parse(response)
+                return _base.parse(response, text)
             except ReedaptError as error:
                 if attempt >= max_retries or not _base.should_retry(error, retry):
                     raise
@@ -366,6 +369,28 @@ class AsyncDubs:
         """Download links for a completed dub's files. Each link lasts an hour."""
         return await self._client._request("GET", f"/dubs/{_base.quote(dub_id)}/files", options=options)
 
+    async def transcript(self, dub_id: str, **options: Unpack[RequestOptions]) -> Transcript:
+        """Every line of a completed dub with its timing, speaker, original words and translation."""
+        return await self._client._request("GET", f"/dubs/{_base.quote(dub_id)}/transcript", options=options)
+
+    async def subtitles(
+        self,
+        dub_id: str,
+        *,
+        format: Literal["srt", "vtt"] = "srt",
+        language: Literal["target", "source"] = "target",
+        **options: Unpack[RequestOptions],
+    ) -> str:
+        """A completed dub's subtitles as SRT or WebVTT text, in the dub's language
+        (``target``) or the original words (``source``)."""
+        return await self._client._request(
+            "GET",
+            f"/dubs/{_base.quote(dub_id)}/subtitles",
+            params={"format": format, "language": language},
+            text=True,
+            options=options,
+        )
+
     async def wait_until_done(
         self,
         dub_id: str,
@@ -419,6 +444,18 @@ class AsyncWebhookEndpoints:
         """Recent deliveries to the endpoint, with what it answered."""
         return await self._client._request(
             "GET", f"/webhook_endpoints/{_base.quote(endpoint_id)}/deliveries", params={"limit": limit}, options=options
+        )
+
+    async def resend_delivery(
+        self, endpoint_id: str, delivery_id: str, **options: Unpack[RequestOptions]
+    ) -> WebhookDelivery:
+        """Sends a past delivery's event to the endpoint again, now. It keeps its event id,
+        so a receiver that skips repeats by event id skips it too."""
+        return await self._client._request(
+            "POST",
+            f"/webhook_endpoints/{_base.quote(endpoint_id)}/deliveries/{_base.quote(delivery_id)}/resend",
+            retry="unsafe",
+            options=options,
         )
 
 

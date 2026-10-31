@@ -88,6 +88,25 @@ class DubFiles(TypedDict):
     expires_at: str
 
 
+class TranscriptLine(TypedDict):
+    start_ms: int
+    end_ms: int
+    speaker: NotRequired[Optional[str]]
+    """The same label throughout a dub, such as ``SPEAKER_00``."""
+    original_text: str
+    text: str
+    """The line in the dub's language."""
+
+
+class Transcript(TypedDict):
+    """A completed dub's lines in time order, edits made in the editor included."""
+
+    dub_id: str
+    source_language: NotRequired[Optional[str]]
+    target_language: NotRequired[Optional[str]]
+    lines: List[TranscriptLine]
+
+
 class Languages(TypedDict):
     target_languages: List[str]
 

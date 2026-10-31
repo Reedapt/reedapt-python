@@ -4,7 +4,7 @@ import threading
 import time
 from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor
 from concurrent.futures import wait as wait_for_futures
-from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Sequence
+from typing import Any, Callable, Dict, Iterator, List, Literal, Mapping, Optional, Sequence
 
 import httpx
 from typing_extensions import Self, Unpack
@@ -19,10 +19,12 @@ from .types import (
     DubList,
     DubsCreated,
     Languages,
+    Transcript,
     Upload,
     UploadedPart,
     Usage,
     UsageReport,
+    WebhookDelivery,
     WebhookDeliveryList,
     WebhookEndpoint,
     WebhookEndpointList,
@@ -126,6 +128,7 @@ class Reedapt:
         params: Optional[Dict[str, Any]] = None,
         retry: Retry = "safe",
         idempotent: bool = False,
+        text: bool = False,
         options: Optional[RequestOptions] = None,
     ) -> Any:
         options = options or {}
@@ -149,7 +152,7 @@ class Reedapt:
                     )
                 except httpx.TransportError as e:
                     raise _base.connection_error(method, path, e, timeout) from e
-                return _base.parse(response)
+                return _base.parse(response, text)
             except ReedaptError as error:
                 if attempt >= max_retries or not _base.should_retry(error, retry):
                     raise
@@ -367,6 +370,28 @@ class Dubs:
         """Download links for a completed dub's files. Each link lasts an hour."""
         return self._client._request("GET", f"/dubs/{_base.quote(dub_id)}/files", options=options)
 
+    def transcript(self, dub_id: str, **options: Unpack[RequestOptions]) -> Transcript:
+        """Every line of a completed dub with its timing, speaker, original words and translation."""
+        return self._client._request("GET", f"/dubs/{_base.quote(dub_id)}/transcript", options=options)
+
+    def subtitles(
+        self,
+        dub_id: str,
+        *,
+        format: Literal["srt", "vtt"] = "srt",
+        language: Literal["target", "source"] = "target",
+        **options: Unpack[RequestOptions],
+    ) -> str:
+        """A completed dub's subtitles as SRT or WebVTT text, in the dub's language
+        (``target``) or the original words (``source``)."""
+        return self._client._request(
+            "GET",
+            f"/dubs/{_base.quote(dub_id)}/subtitles",
+            params={"format": format, "language": language},
+            text=True,
+            options=options,
+        )
+
     def wait_until_done(
         self,
         dub_id: str,
@@ -419,6 +444,16 @@ class WebhookEndpoints:
         """Recent deliveries to the endpoint, with what it answered."""
         return self._client._request(
             "GET", f"/webhook_endpoints/{_base.quote(endpoint_id)}/deliveries", params={"limit": limit}, options=options
+        )
+
+    def resend_delivery(self, endpoint_id: str, delivery_id: str, **options: Unpack[RequestOptions]) -> WebhookDelivery:
+        """Sends a past delivery's event to the endpoint again, now. It keeps its event id,
+        so a receiver that skips repeats by event id skips it too."""
+        return self._client._request(
+            "POST",
+            f"/webhook_endpoints/{_base.quote(endpoint_id)}/deliveries/{_base.quote(delivery_id)}/resend",
+            retry="unsafe",
+            options=options,
         )
 
 

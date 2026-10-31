@@ -74,8 +74,10 @@ def idempotency_key_for(idempotent: bool, options: RequestOptions) -> Optional[s
     return options.get("idempotency_key") or (str(uuid.uuid4()) if idempotent else None)
 
 
-def parse(response: httpx.Response) -> Any:
+def parse(response: httpx.Response, text: bool = False) -> Any:
     if response.is_success:
+        if text:
+            return response.text
         if response.status_code == 204 or not response.content:
             return None
         return response.json()

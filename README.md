@@ -87,6 +87,8 @@ for dub in reedapt.dubs.list_all():
     print(dub["id"], dub["status"])
 reedapt.dubs.files("job_3f9a2c7e1b4d")  # links last an hour
 reedapt.dubs.cancel("job_3f9a2c7e1b4d")  # minutes are returned
+reedapt.dubs.transcript("job_3f9a2c7e1b4d")  # every line, with timing, speaker and translation
+reedapt.dubs.subtitles("job_3f9a2c7e1b4d", format="vtt")  # SRT (default) or WebVTT text
 
 reedapt.languages.list()  # {"target_languages": [...]}
 reedapt.usage.retrieve()  # plan, key mode and minutes left
@@ -97,7 +99,7 @@ Results are plain dictionaries, typed with `TypedDict`s in `reedapt.types`.
 
 ## Webhooks
 
-Add an endpoint under **Developers**, or with `reedapt.webhook_endpoints.create(url=...)`, and keep its `whsec_` secret. Check every delivery against the raw body:
+Add an endpoint under **Developers**, or with `reedapt.webhook_endpoints.create(url=...)`, and keep its `whsec_` secret. `reedapt.webhook_endpoints.resend_delivery(endpoint_id, delivery_id)` sends a past delivery again. Check every delivery against the raw body:
 
 ```python
 import os
