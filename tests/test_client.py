@@ -4,6 +4,7 @@ import httpx
 import pytest
 
 from reedapt import (
+    APIError,
     AsyncReedapt,
     AuthenticationError,
     ConflictError,
@@ -286,3 +287,130 @@ async def test_async_transcript_subtitles_and_resend() -> None:
     assert (await reedapt.dubs.transcript("job_1"))["lines"] == []
     assert (await reedapt.dubs.subtitles("job_1")).startswith("1\n")
     assert (await reedapt.webhook_endpoints.resend_delivery("we_1", "whd_1"))["id"] == "whd_1"
+
+
+def test_create_dubs_passes_instructions_through() -> None:
+    rec = Recorder(lambda r: answer(201, {"dubs": []}))
+    client(rec).dubs.create(
+        upload_id="upl_1", source_language="en", target_languages=["fr"], instructions="Keep the name Adaeze."
+    )
+    assert rec.body(0)["instructions"] == "Keep the name Adaeze."
+    client(rec).dubs.create(upload_id="upl_1", source_language="en", target_languages=["fr"])
+    assert "instructions" not in rec.body(1)
+
+
+def test_quality_returns_the_report() -> None:
+    quality = {
+        "dub_id": "job_1",
+        "checked": True,
+        "listened": True,
+        "lines": 40,
+        "fixed": 2,
+        "to_review": 1,
+        "flagged": [{"line": 3, "start_ms": 9000, "checks": ["fit"], "fixed": "shortened"}],
+    }
+    rec = Recorder(lambda r: answer(200, quality))
+    assert client(rec).dubs.quality("job_1") == quality
+    assert str(rec.calls[0].url) == "https://api.reedapt.com/v1/dubs/job_1/quality"
+
+
+def test_requests_create_defaults_to_ask_and_is_not_retried_after_a_network_failure() -> None:
+    run = {
+        "id": "run_1",
+        "dub_id": "job_1",
+        "status": "done",
+        "request": "Natural?",
+        "reply": "Yes.",
+        "created_at": "x",
+    }
+    rec = Recorder(lambda r: answer(200, run))
+    assert client(rec).dubs.requests.create("job_1", text="Natural?") == run
+    assert rec.calls[0].method == "POST"
+    assert str(rec.calls[0].url) == "https://api.reedapt.com/v1/dubs/job_1/requests"
+    assert rec.body(0) == {"text": "Natural?", "autonomy": "ask"}
+    assert "idempotency-key" not in rec.calls[0].headers
+    client(rec).dubs.requests.create("job_1", text="Fix it.", autonomy="decide")
+    assert rec.body(1)["autonomy"] == "decide"
+
+    def down(r: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("network down")
+
+    failing = Recorder(down)
+    with pytest.raises(ConnectionError):
+        client(failing).dubs.requests.create("job_1", text="x")
+    assert len(failing.calls) == 1
+
+
+def test_a_request_that_is_not_released_yet_raises_not_available() -> None:
+    rec = Recorder(lambda r: api_error(403, "NOT_AVAILABLE"))
+    with pytest.raises(APIError) as info:
+        client(rec).dubs.requests.create("job_1", text="x")
+    assert info.value.status == 403
+    assert info.value.code == "NOT_AVAILABLE"
+
+
+def test_runs_retrieve_and_answer() -> None:
+    run = {
+        "id": "run_1",
+        "dub_id": "job_1",
+        "status": "needs_input",
+        "request": "Calmer.",
+        "reply": "I can soften line 3.",
+        "proposal": {"kind": "edit_lines", "summary": "Soften line 3", "lines": 1},
+        "options": [{"id": "apply", "label": "Apply"}, {"id": "decline", "label": "Decline"}],
+        "created_at": "x",
+    }
+    rec = Recorder(lambda r: answer(200, run if r.method == "GET" else {**run, "status": "declined"}))
+    reedapt = client(rec)
+    assert reedapt.runs.retrieve("run_1") == run
+    assert str(rec.calls[0].url) == "https://api.reedapt.com/v1/runs/run_1"
+    assert reedapt.runs.answer("run_1", choice="decline")["status"] == "declined"
+    assert rec.calls[1].method == "POST"
+    assert str(rec.calls[1].url) == "https://api.reedapt.com/v1/runs/run_1/answer"
+    assert rec.body(1) == {"choice": "decline"}
+
+
+def test_lines_list_and_edit() -> None:
+    line = {
+        "line": 3,
+        "start_ms": 1,
+        "end_ms": 2,
+        "speaker": "SPEAKER_00",
+        "original_text": "Hi.",
+        "text": "Salut.",
+        "delivery_style": None,
+        "voice_instructions": None,
+    }
+    rec = Recorder(
+        lambda r: (
+            answer(200, {"dub_id": "job_1", "lines": [line]})
+            if r.method == "GET"
+            else answer(202, {"dub_id": "job_1", "lines": [3], "status": "revoicing"})
+        )
+    )
+    reedapt = client(rec)
+    assert reedapt.dubs.lines.list("job_1")["lines"] == [line]
+    assert str(rec.calls[0].url) == "https://api.reedapt.com/v1/dubs/job_1/lines"
+    assert reedapt.dubs.lines.edit("job_1", lines=[{"line": 3, "text": "Bonjour."}])["status"] == "revoicing"
+    assert str(rec.calls[1].url) == "https://api.reedapt.com/v1/dubs/job_1/lines/edit"
+    assert rec.body(1) == {"lines": [{"line": 3, "text": "Bonjour."}]}
+
+
+async def test_async_quality_requests_runs_and_lines() -> None:
+    def handle(r: httpx.Request) -> httpx.Response:
+        if r.url.path.endswith("/quality"):
+            return answer(200, {"dub_id": "job_1", "checked": False})
+        if r.url.path.endswith("/lines/edit"):
+            return answer(202, {"dub_id": "job_1", "lines": [3], "status": "revoicing"})
+        if r.url.path.endswith("/lines"):
+            return answer(200, {"dub_id": "job_1", "lines": []})
+        return answer(200, {"id": "run_1", "status": "done"})
+
+    rec = Recorder(handle)
+    reedapt = AsyncReedapt(api_key="k", http_client=httpx.AsyncClient(transport=httpx.MockTransport(rec)))
+    assert (await reedapt.dubs.quality("job_1"))["checked"] is False
+    assert (await reedapt.dubs.requests.create("job_1", text="x"))["id"] == "run_1"
+    assert (await reedapt.runs.answer("run_1", choice="apply"))["id"] == "run_1"
+    assert (await reedapt.runs.retrieve("run_1"))["id"] == "run_1"
+    assert (await reedapt.dubs.lines.list("job_1"))["lines"] == []
+    assert (await reedapt.dubs.lines.edit("job_1", lines=[{"line": 3, "text": "x"}]))["status"] == "revoicing"

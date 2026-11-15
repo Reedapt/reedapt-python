@@ -14,11 +14,18 @@ from ._base import FileInput, RequestOptions, Retry, Source
 from ._errors import ConflictError, ReedaptError, UploadError, WaitError
 from ._webhooks import Webhooks
 from .types import (
+    Autonomy,
     Dub,
     DubFiles,
+    DubLines,
     DubList,
     DubsCreated,
     Languages,
+    LineEdit,
+    LinesEdited,
+    Quality,
+    Run,
+    RunChoice,
     Transcript,
     Upload,
     UploadedPart,
@@ -56,6 +63,7 @@ class Reedapt:
         self._owns_http = http_client is None
         self.uploads = Uploads(self)
         self.dubs = Dubs(self)
+        self.runs = Runs(self)
         self.webhook_endpoints = WebhookEndpoints(self)
         self.webhooks = Webhooks()
         self.languages = LanguagesResource(self)
@@ -85,6 +93,7 @@ class Reedapt:
         voice_cloning: Optional[bool] = None,
         num_speakers: Optional[int] = None,
         media_category: Optional[str] = None,
+        instructions: Optional[str] = None,
         metadata: Optional[Mapping[str, str]] = None,
         concurrency: int = 4,
         on_progress: Optional[ProgressCallback] = None,
@@ -115,6 +124,7 @@ class Reedapt:
             voice_cloning=voice_cloning,
             num_speakers=num_speakers,
             media_category=media_category,
+            instructions=instructions,
             metadata=metadata,
             **dub_options,
         )
@@ -319,6 +329,10 @@ def check_upload(upload: Upload) -> None:
 class Dubs:
     def __init__(self, client: Reedapt) -> None:
         self._client = client
+        self.requests = DubRequests(client)
+        """Ask Reedapt for changes to a finished dub. Early access."""
+        self.lines = DubLinesResource(client)
+        """Read and edit a dub's lines. Early access."""
 
     def create(
         self,
@@ -329,12 +343,20 @@ class Dubs:
         voice_cloning: Optional[bool] = None,
         num_speakers: Optional[int] = None,
         media_category: Optional[str] = None,
+        instructions: Optional[str] = None,
         metadata: Optional[Mapping[str, str]] = None,
         **options: Unpack[RequestOptions],
     ) -> DubsCreated:
         """Starts one dub per target language. Languages that can't start come back in ``refused``."""
         body = _base.dub_body(
-            upload_id, source_language, list(target_languages), voice_cloning, num_speakers, media_category, metadata
+            upload_id,
+            source_language,
+            list(target_languages),
+            voice_cloning,
+            num_speakers,
+            media_category,
+            metadata,
+            instructions,
         )
         return self._client._request("POST", "/dubs", body=body, idempotent=True, options=options)
 
@@ -369,6 +391,12 @@ class Dubs:
     def files(self, dub_id: str, **options: Unpack[RequestOptions]) -> DubFiles:
         """Download links for a completed dub's files. Each link lasts an hour."""
         return self._client._request("GET", f"/dubs/{_base.quote(dub_id)}/files", options=options)
+
+    def quality(self, dub_id: str, **options: Unpack[RequestOptions]) -> Quality:
+        """Reedapt's check of a finished dub: what it listened to, what it fixed and the lines
+        left for you to review. ``checked`` is False until the check has run; the
+        ``dub.checked`` webhook announces it."""
+        return self._client._request("GET", f"/dubs/{_base.quote(dub_id)}/quality", options=options)
 
     def transcript(self, dub_id: str, **options: Unpack[RequestOptions]) -> Transcript:
         """Every line of a completed dub with its timing, speaker, original words and translation."""
@@ -412,6 +440,65 @@ class Dubs:
             if time.monotonic() + poll_interval > deadline:
                 raise WaitError(f"Dub {dub_id} was still {dub['status']} when the wait ran out.")
             time.sleep(poll_interval)
+
+
+class DubRequests:
+    """Asking Reedapt for changes to a finished dub. Early access."""
+
+    def __init__(self, client: Reedapt) -> None:
+        self._client = client
+
+    def create(self, dub_id: str, *, text: str, autonomy: Autonomy = "ask", **options: Unpack[RequestOptions]) -> Run:
+        """Hands Reedapt a request in plain words, such as "Make line 3 sound calmer".
+
+        With ``autonomy="ask"`` (the default) nothing changes until you answer the run with
+        ``runs.answer``. With ``"decide"`` Reedapt applies what it judges right."""
+        # Not retried after a network failure: it could start the request twice.
+        return self._client._request(
+            "POST",
+            f"/dubs/{_base.quote(dub_id)}/requests",
+            body={"text": text, "autonomy": autonomy},
+            retry="unsafe",
+            options=options,
+        )
+
+
+class DubLinesResource:
+    """Reading and editing a finished dub's lines. Early access."""
+
+    def __init__(self, client: Reedapt) -> None:
+        self._client = client
+
+    def list(self, dub_id: str, **options: Unpack[RequestOptions]) -> DubLines:
+        """Every line with its timing, speaker, original and dubbed words, and delivery notes."""
+        return self._client._request("GET", f"/dubs/{_base.quote(dub_id)}/lines", options=options)
+
+    def edit(self, dub_id: str, *, lines: Sequence[LineEdit], **options: Unpack[RequestOptions]) -> LinesEdited:
+        """Changes up to 100 lines. They are voiced again in the background; the dub's files
+        update when that finishes."""
+        return self._client._request(
+            "POST",
+            f"/dubs/{_base.quote(dub_id)}/lines/edit",
+            body={"lines": list(lines)},
+            retry="unsafe",
+            options=options,
+        )
+
+
+class Runs:
+    """Requests for changes to dubs. Early access."""
+
+    def __init__(self, client: Reedapt) -> None:
+        self._client = client
+
+    def retrieve(self, run_id: str, **options: Unpack[RequestOptions]) -> Run:
+        return self._client._request("GET", f"/runs/{_base.quote(run_id)}", options=options)
+
+    def answer(self, run_id: str, *, choice: RunChoice, **options: Unpack[RequestOptions]) -> Run:
+        """Answers a run that is ``needs_input``: ``apply`` the proposal or ``decline`` it."""
+        return self._client._request(
+            "POST", f"/runs/{_base.quote(run_id)}/answer", body={"choice": choice}, retry="unsafe", options=options
+        )
 
 
 class WebhookEndpoints:

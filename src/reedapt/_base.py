@@ -213,6 +213,7 @@ def dub_body(
     num_speakers: Optional[int],
     media_category: Optional[str],
     metadata: Optional[Mapping[str, str]],
+    instructions: Optional[str] = None,
 ) -> Dict[str, Any]:
     body: Dict[str, Any] = {
         "upload_id": upload_id,
@@ -223,6 +224,7 @@ def dub_body(
         ("voice_cloning", voice_cloning),
         ("num_speakers", num_speakers),
         ("media_category", media_category),
+        ("instructions", instructions),
         ("metadata", dict(metadata) if metadata is not None else None),
     ):
         if value is not None:
