@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from typing_extensions import Literal, NotRequired, TypedDict
+from typing_extensions import Literal, NotRequired, Required, TypedDict
 
 UploadStatus = Literal["uploading", "fetching", "uploaded", "used", "failed"]
 DubStatus = Literal["queued", "processing", "completed", "failed"]
@@ -107,6 +107,97 @@ class Transcript(TypedDict):
     lines: List[TranscriptLine]
 
 
+QualityFix = Literal["shortened", "revoiced"]
+RunStatus = Literal["done", "needs_input", "applied", "declined", "failed"]
+RunChoice = Literal["apply", "decline"]
+Autonomy = Literal["ask", "decide"]
+
+
+class FlaggedLine(TypedDict):
+    line: int
+    start_ms: int
+    checks: List[str]
+    """What the checks found, such as ``fit`` (the line doesn't fit its time)."""
+    fixed: Optional[QualityFix]
+    """How Reedapt dealt with it, or ``None`` if it's left for you to review."""
+
+
+class Quality(TypedDict):
+    """Reedapt's check of a finished dub. ``checked`` is False until the measurement checks have run."""
+
+    dub_id: str
+    checked: bool
+    listened: bool
+    lines: int
+    fixed: int
+    to_review: int
+    flagged: List[FlaggedLine]
+
+
+class RunProposal(TypedDict):
+    kind: str
+    summary: str
+    lines: int
+    """How many lines it would change."""
+
+
+class RunOption(TypedDict):
+    id: RunChoice
+    label: str
+
+
+class Run(TypedDict):
+    """A request for changes to a dub, and what Reedapt did or proposes to do about it."""
+
+    id: str
+    object: NotRequired[str]
+    dub_id: str
+    status: RunStatus
+    request: str
+    reply: str
+    proposal: NotRequired[Optional[RunProposal]]
+    """Present while ``status`` is ``needs_input``."""
+    options: NotRequired[Optional[List[RunOption]]]
+    applied_lines: NotRequired[Optional[int]]
+    """How many lines were changed, once the run is ``applied``. They are voiced again in the background."""
+    created_at: str
+
+
+class DubLine(TypedDict):
+    line: int
+    """The line's number in time order, starting at 1."""
+    start_ms: int
+    end_ms: int
+    speaker: NotRequired[Optional[str]]
+    original_text: str
+    text: str
+    """The line in the dub's language."""
+    delivery_style: NotRequired[Optional[str]]
+    voice_instructions: NotRequired[Optional[str]]
+
+
+class DubLines(TypedDict):
+    dub_id: str
+    lines: List[DubLine]
+
+
+class LineEdit(TypedDict, total=False):
+    line: Required[int]
+    text: str
+    """New wording, in the dub's language."""
+    delivery_style: Optional[str]
+    """For example ``angry`` or ``whisper``. ``None`` clears it."""
+    voice_instructions: Optional[str]
+    """How to say it, in plain words. Up to 300 characters."""
+
+
+class LinesEdited(TypedDict):
+    dub_id: str
+    lines: List[int]
+    """The lines being voiced again."""
+    status: Literal["revoicing"]
+
+
 class Languages(TypedDict):
     target_languages: List[str]
 
@@ -188,8 +279,9 @@ class WebhookDeliveryList(TypedDict):
 
 
 class WebhookEvent(TypedDict):
-    """``type`` is ``dub.completed``, ``dub.failed``, ``batch.completed`` or
-    ``webhook.test``; new types may be added. ``data`` holds ``dub`` or ``batch``."""
+    """``type`` is ``dub.completed``, ``dub.failed``, ``dub.checked``, ``batch.completed``
+    or ``webhook.test``; new types may be added, so ignore the ones you don't know.
+    ``data`` holds ``dub`` (and ``quality`` for ``dub.checked``) or ``batch``."""
 
     id: str
     type: str

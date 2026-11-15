@@ -64,3 +64,21 @@ def test_a_missing_or_malformed_header_is_refused() -> None:
 def test_any_one_of_several_v1_signatures_may_match() -> None:
     t, good = sign(BODY).split(",")
     verify_webhook(BODY, f"{t},v1={'0' * 64},{good}", SECRET)
+
+
+def test_a_dub_checked_delivery_carries_the_dub_and_its_quality_report() -> None:
+    quality = {
+        "dub_id": "job_1",
+        "checked": True,
+        "listened": True,
+        "lines": 10,
+        "fixed": 1,
+        "to_review": 0,
+        "flagged": [],
+    }
+    body = json.dumps(
+        {"id": "evt_2", "type": "dub.checked", "created_at": "x", "data": {"dub": {"id": "job_1"}, "quality": quality}}
+    )
+    event = construct_webhook_event(body, sign(body), SECRET)
+    assert event["type"] == "dub.checked"
+    assert event["data"]["quality"] == quality

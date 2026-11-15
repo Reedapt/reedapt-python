@@ -69,6 +69,7 @@ created = reedapt.dubs.create(
     source_language="en",
     target_languages=["yo"],
     metadata={"order_id": "1042"},
+    instructions="Keep the speaker's name, Adaeze, as it is. Warm, informal tone.",  # paid plans
 )
 ```
 
@@ -89,6 +90,7 @@ reedapt.dubs.files("job_3f9a2c7e1b4d")  # links last an hour
 reedapt.dubs.cancel("job_3f9a2c7e1b4d")  # minutes are returned
 reedapt.dubs.transcript("job_3f9a2c7e1b4d")  # every line, with timing, speaker and translation
 reedapt.dubs.subtitles("job_3f9a2c7e1b4d", format="vtt")  # SRT (default) or WebVTT text
+reedapt.dubs.quality("job_3f9a2c7e1b4d")  # Reedapt's check: lines fixed and lines left to review
 
 reedapt.languages.list()  # {"target_languages": [...]}
 reedapt.usage.retrieve()  # plan, key mode and minutes left
@@ -96,6 +98,37 @@ reedapt.usage.report(month="2026-10")  # minutes and dubs per key and per langua
 ```
 
 Results are plain dictionaries, typed with `TypedDict`s in `reedapt.types`.
+
+## Ask Reedapt for changes
+
+Early access: this is released to some paid accounts first, and other accounts get a `403` with the code `NOT_AVAILABLE`. Describe a change in plain words and Reedapt either answers, proposes a change, or makes it. With `autonomy="ask"` (the default) nothing changes until you say so:
+
+```python
+run = reedapt.dubs.requests.create(
+    "job_3f9a2c7e1b4d",
+    text="Is line 3 natural? If not, make it sound calmer.",
+    autonomy="ask",
+)
+print(run["reply"])
+
+if run["status"] == "needs_input":
+    print(run["proposal"]["summary"], run["proposal"]["lines"])  # lines = how many it would change
+    run = reedapt.runs.answer(run["id"], choice="apply")  # or "decline"
+# run["status"] is done, applied, declined or failed; run.get("applied_lines") counts the lines changed.
+reedapt.runs.retrieve(run["id"])
+```
+
+You can also read and edit lines yourself. Edited lines are voiced again in the background:
+
+```python
+lines = reedapt.dubs.lines.list("job_3f9a2c7e1b4d")["lines"]
+reedapt.dubs.lines.edit(
+    "job_3f9a2c7e1b4d",
+    lines=[{"line": 3, "text": "Bienvenue chez nous.", "delivery_style": "warm"}],
+)  # {"dub_id": ..., "lines": [3], "status": "revoicing"}
+```
+
+A request counts against your plan's allowance for these requests; when it's used up you get `AGENT_ALLOWANCE_USED` (429) until it renews. The asyncio client has the same methods.
 
 ## Webhooks
 
@@ -121,6 +154,10 @@ def reedapt_webhook():
         abort(400)
     if event["type"] == "dub.completed":
         dub = event["data"]["dub"]  # queue the work, then answer quickly
+    elif event["type"] == "dub.checked":
+        # A few minutes later, on plans where Reedapt checks dubs:
+        quality = event["data"]["quality"]  # lines it fixed and lines left to review
+    # Ignore types you don't know; every endpoint gets every event.
     return "", 200
 ```
 
